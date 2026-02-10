@@ -1,0 +1,85 @@
+{
+  "name": "human-review",
+  "displayName": "Human Review",
+  "description": "Renders AI-generated human PR reviews with native diff editors",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "humanReview.open",
+        "title": "Human Review: Open Review File"
+      },
+      {
+        "command": "humanReview.openGroup",
+        "title": "Human Review: Open Group"
+      },
+      {
+        "command": "humanReview.nextGroup",
+        "title": "Human Review: Next Group"
+      },
+      {
+        "command": "humanReview.prevGroup",
+        "title": "Human Review: Previous Group"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "human-review",
+          "title": "Human Review",
+          "icon": "$(git-pull-request)"
+        }
+      ]
+    },
+    "views": {
+      "human-review": [
+        {
+          "type": "webview",
+          "id": "humanReview.sidebar",
+          "name": "Changes"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "humanReview.nextGroup",
+        "key": "ctrl+shift+]",
+        "mac": "cmd+shift+]"
+      },
+      {
+        "command": "humanReview.prevGroup",
+        "key": "ctrl+shift+[",
+        "mac": "cmd+shift+["
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.54.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  },
+  "packageManager": "pnpm@9.14.4+sha512.c8180b3fbe4e4bca02c94234717896b5529740a6cbadf19fa78254270403ea2f27d4e1d46a08a0f56c89b63dc8ebfd3ee53326da720273794e6200fcf0d184ab"
+}
