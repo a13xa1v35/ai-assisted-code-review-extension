@@ -1,23 +1,28 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { Review, Group } from "./types";
+import { Review } from "./types";
 
 export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private review?: Review;
   private reviewPath?: string;
+  private reviewMtime?: Date;
   private currentGroupIndex = 0;
-  private currentDecoration?: vscode.TextEditorDecorationType;
 
-  constructor(private extensionUri: vscode.Uri) {}
+  constructor(private readonly _extensionUri: vscode.Uri) {}
 
   async loadReview(filePath: string) {
     try {
       const content = await fs.promises.readFile(filePath, "utf-8");
+      const stat = await fs.promises.stat(filePath);
       this.review = JSON.parse(content);
       this.reviewPath = filePath;
+      this.reviewMtime = stat.mtime;
       this.currentGroupIndex = 0;
+
+      // Close any existing diff tabs from previous review
+      await this.closeAllDiffTabs();
 
       // Reveal the sidebar
       await vscode.commands.executeCommand("humanReview.sidebar.focus");
@@ -31,17 +36,20 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  async openGroup(groupId: string) {
-    const group = this.review?.groups.find((g) => g.id === groupId);
+  async openGroup(groupTitle: string) {
+    const group = this.review?.groups.find((g) => g.title === groupTitle);
     if (!group || !this.review) {
       return;
     }
 
     // Update current index
-    const index = this.review.groups.findIndex((g) => g.id === groupId);
+    const index = this.review.groups.findIndex((g) => g.title === groupTitle);
     if (index !== -1) {
       this.currentGroupIndex = index;
     }
+
+    // Notify webview of selection
+    this.view?.webview.postMessage({ type: 'selectGroup', index: this.currentGroupIndex });
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot) {
@@ -49,113 +57,43 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const file = group.files[0];
-    if (!file) {
+    if (group.files.length === 0) {
       vscode.window.showWarningMessage("No files in this group");
       return;
     }
 
-    // Get file content at base ref using git show
+    // Close existing human-review diff tabs before opening new ones
+    await this.closeAllDiffTabs();
+
     const baseRef = this.review.meta.base;
-    const headUri = vscode.Uri.file(path.join(workspaceRoot, file.path));
 
-    try {
-      // Create a temporary URI scheme for the base content
+    // Open all files in the group as separate diff tabs
+    for (const filePath of group.files) {
       const baseUri = vscode.Uri.parse(
-        `human-review-git:${file.path}?ref=${baseRef}`
+        `human-review-git:${filePath}?ref=${baseRef}`
       );
+      const headUri = vscode.Uri.file(path.join(workspaceRoot, filePath));
 
-      // Open native diff editor
-      await vscode.commands.executeCommand(
-        "vscode.diff",
-        baseUri,
-        headUri,
-        `${file.path} - ${group.title}`
-      );
-
-      // Scroll to first hunk after a short delay to let editor initialize
-      setTimeout(async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && file.hunks[0]) {
-          const pos = new vscode.Position(file.hunks[0].start - 1, 0);
-          editor.revealRange(
-            new vscode.Range(pos, pos),
-            vscode.TextEditorRevealType.InCenter
-          );
-        }
-
-        // Apply decorations
-        this.applyDecoration(vscode.window.activeTextEditor, group);
-      }, 100);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Failed to open diff: ${error}`);
-    }
-  }
-
-  nextGroup() {
-    if (!this.review || this.review.groups.length === 0) {
-      return;
-    }
-    this.currentGroupIndex =
-      (this.currentGroupIndex + 1) % this.review.groups.length;
-    const group = this.review.groups[this.currentGroupIndex];
-    this.openGroup(group.id);
-  }
-
-  prevGroup() {
-    if (!this.review || this.review.groups.length === 0) {
-      return;
-    }
-    this.currentGroupIndex =
-      (this.currentGroupIndex - 1 + this.review.groups.length) %
-      this.review.groups.length;
-    const group = this.review.groups[this.currentGroupIndex];
-    this.openGroup(group.id);
-  }
-
-  private applyDecoration(editor: vscode.TextEditor | undefined, group: Group) {
-    if (!editor) {
-      return;
-    }
-
-    // Dispose previous decoration
-    if (this.currentDecoration) {
-      this.currentDecoration.dispose();
-    }
-
-    this.currentDecoration = vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      borderWidth: "0 0 0 3px",
-      borderStyle: "solid",
-      borderColor: "#4EC9B0",
-      overviewRulerColor: "#4EC9B0",
-      overviewRulerLane: vscode.OverviewRulerLane.Left,
-    });
-
-    // Find hunks for the current file
-    const currentFilePath = editor.document.uri.fsPath;
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-    const ranges: vscode.Range[] = [];
-    for (const f of group.files) {
-      const fullPath = workspaceRoot
-        ? path.join(workspaceRoot, f.path)
-        : f.path;
-      if (fullPath === currentFilePath || currentFilePath.endsWith(f.path)) {
-        for (const h of f.hunks) {
-          ranges.push(new vscode.Range(h.start - 1, 0, h.end - 1, 0));
-        }
+      try {
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          baseUri,
+          headUri,
+          `${filePath} — ${group.title}`
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Failed to open diff for ${filePath}: ${error}`
+        );
       }
     }
-
-    editor.setDecorations(this.currentDecoration, ranges);
   }
 
   private refresh() {
     if (!this.view || !this.review) {
       return;
     }
-    this.view.webview.postMessage({ type: "update", review: this.review });
+    this.view.webview.postMessage({ type: "update", review: this.review, mtime: this.reviewMtime?.toISOString() });
   }
 
   resolveWebviewView(
@@ -169,18 +107,20 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage((msg) => {
       if (msg.type === "openGroup") {
-        this.openGroup(msg.groupId);
+        this.openGroup(msg.groupTitle);
       } else if (msg.type === "openFlag") {
         this.openFlag(msg.file, msg.line);
       } else if (msg.type === "selectFile") {
         this.promptSelectFile();
+      } else if (msg.type === "unloadReview") {
+        this.unloadReview();
+      } else if (msg.type === "ready") {
+        // Webview finished loading, send current review if we have one
+        if (this.review) {
+          this.refresh();
+        }
       }
     });
-
-    // If we already have a review loaded, refresh the view
-    if (this.review) {
-      this.refresh();
-    }
   }
 
   private async openFlag(file: string, line: number) {
@@ -198,6 +138,31 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       vscode.TextEditorRevealType.InCenter
     );
     editor.selection = new vscode.Selection(pos, pos);
+  }
+
+  private async closeAllDiffTabs() {
+    for (const tabGroup of vscode.window.tabGroups.all) {
+      const tabsToClose = tabGroup.tabs.filter((tab) => {
+        if (tab.input instanceof vscode.TabInputTextDiff) {
+          return tab.input.original.scheme === 'human-review-git';
+        }
+        return false;
+      });
+      if (tabsToClose.length > 0) {
+        await vscode.window.tabGroups.close(tabsToClose);
+      }
+    }
+  }
+
+  async unloadReview() {
+    this.review = undefined;
+    this.reviewPath = undefined;
+    this.reviewMtime = undefined;
+    this.currentGroupIndex = 0;
+    await this.closeAllDiffTabs();
+    if (this.view) {
+      this.view.webview.postMessage({ type: 'reset' });
+    }
   }
 
   async promptSelectFile() {
@@ -299,6 +264,11 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       top: 0;
       background: var(--vscode-sideBar-background);
     }
+    .header-date {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 4px;
+    }
     .group {
       padding: 12px;
       border-bottom: 1px solid var(--vscode-panel-border);
@@ -320,14 +290,6 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       font-size: 11px;
       color: var(--vscode-descriptionForeground);
     }
-    .stats {
-      display: flex;
-      gap: 8px;
-      margin-top: 4px;
-      font-size: 12px;
-    }
-    .add { color: var(--vscode-gitDecoration-addedResourceForeground); }
-    .del { color: var(--vscode-gitDecoration-deletedResourceForeground); }
     .section-header {
       padding: 8px 12px;
       font-size: 11px;
@@ -365,27 +327,17 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     .flag-title {
       font-weight: 500;
     }
+    .flag-summary {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      margin-top: 2px;
+    }
     .flag-location {
       font-size: 11px;
       color: var(--vscode-descriptionForeground);
       margin-top: 2px;
     }
-    .moved {
-      padding: 0;
-    }
-    .moved-item {
-      padding: 8px 12px;
-      font-size: 12px;
-      border-bottom: 1px solid var(--vscode-panel-border);
-    }
-    .moved-desc {
-      margin-bottom: 4px;
-    }
-    .moved-paths {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-    }
-    .select-btn {
+.select-btn {
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       border: none;
@@ -397,6 +349,45 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
     .select-btn:hover {
       background: var(--vscode-button-hoverBackground);
+    }
+    .fc-green { color: var(--vscode-testing-iconPassed); }
+    .fc-yellow { color: var(--vscode-editorWarning-foreground); }
+    .fc-red { color: var(--vscode-editorError-foreground); }
+    .group.selected .fc-green,
+    .group.selected .fc-yellow,
+    .group.selected .fc-red {
+      color: var(--vscode-list-activeSelectionForeground);
+    }
+    .group.selected {
+      background: var(--vscode-list-activeSelectionBackground);
+      color: var(--vscode-list-activeSelectionForeground);
+    }
+    .group.selected:hover {
+      background: var(--vscode-list-activeSelectionBackground);
+    }
+    .group.selected .group-summary,
+    .group.selected .group-meta {
+      color: var(--vscode-list-activeSelectionForeground);
+      opacity: 0.9;
+    }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .unload-btn {
+      background: none;
+      border: none;
+      color: var(--vscode-descriptionForeground);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 6px;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .unload-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground);
+      color: var(--vscode-foreground);
     }
   </style>
 </head>
@@ -412,27 +403,54 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     const vscode = acquireVsCodeApi();
 
     window.addEventListener('message', e => {
-      if (e.data.type === 'update') render(e.data.review);
+      if (e.data.type === 'update') {
+        render(e.data.review, e.data.mtime);
+        vscode.setState({ review: e.data.review, mtime: e.data.mtime, selectedGroup: -1 });
+      } else if (e.data.type === 'selectGroup') {
+        highlightGroup(e.data.index);
+        const state = vscode.getState() || {};
+        vscode.setState({ ...state, selectedGroup: e.data.index });
+      } else if (e.data.type === 'reset') {
+        showEmpty();
+        vscode.setState({});
+      }
     });
 
-    function render(review) {
+    // Restore state when webview is re-created (e.g. after switching views)
+    const savedState = vscode.getState();
+    if (savedState?.review) {
+      render(savedState.review, savedState.mtime);
+      if (savedState.selectedGroup >= 0) {
+        highlightGroup(savedState.selectedGroup);
+      }
+    }
+
+    // Tell the extension we're ready to receive data
+    vscode.postMessage({ type: 'ready' });
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function render(review, mtime) {
       const root = document.getElementById('root');
 
       root.innerHTML = \`
         <div class="header">
-          <strong>Changes in PR</strong>
-          <div class="group-meta">\${review.groups.length} group\${review.groups.length !== 1 ? 's' : ''}</div>
+          <div class="header-row">
+            <strong>\${review.groups.length} Review Group\${review.groups.length !== 1 ? 's' : ''}</strong>
+            <button class="unload-btn" onclick="unloadReview()" title="Close review">\u2715</button>
+          </div>
+          \${mtime ? \`<div class="header-date">\${formatDate(mtime)}</div>\` : ''}
         </div>
 
         \${review.groups.map((g, i) => \`
-          <div class="group" onclick="openGroup('\${g.id}')">
+          <div class="group" id="group-\${i}" onclick="openGroup('\${esc(g.title)}')">
             <div class="group-title">\${i + 1}. \${esc(g.title)}</div>
             \${g.summary ? \`<div class="group-summary">\${esc(g.summary)}</div>\` : ''}
-            <div class="group-meta">\${g.files.length} file\${g.files.length !== 1 ? 's' : ''}</div>
-            <div class="stats">
-              <span class="add">+\${g.additions}</span>
-              <span class="del">-\${g.deletions}</span>
-            </div>
+            <div class="group-meta"><span class="file-count \${g.files.length < 5 ? 'fc-green' : g.files.length < 10 ? 'fc-yellow' : 'fc-red'}">\${g.files.length} file\${g.files.length !== 1 ? 's' : ''}</span></div>
           </div>
         \`).join('')}
 
@@ -444,6 +462,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
                 <span class="flag-icon">\${f.severity === 'error' ? '\u2716' : f.severity === 'warning' ? '\u26A0' : '\u24D8'}</span>
                 <div class="flag-content">
                   <div class="flag-title">\${esc(f.title)}</div>
+                  \${f.summary ? \`<div class="flag-summary">\${esc(f.summary)}</div>\` : ''}
                   <div class="flag-location">\${esc(f.file)}:\${f.line}</div>
                 </div>
               </div>
@@ -451,24 +470,11 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
           </div>
         \` : ''}
 
-        \${review.moved?.length ? \`
-          <div class="section-header">Moved Code</div>
-          <div class="moved">
-            \${review.moved.map(m => \`
-              <div class="moved-item">
-                <div class="moved-desc">\${esc(m.description)}</div>
-                <div class="moved-paths">
-                  \${esc(m.from.path)}:\${m.from.start}-\${m.from.end} \u2192 \${esc(m.to.path)}:\${m.to.start}-\${m.to.end}
-                </div>
-              </div>
-            \`).join('')}
-          </div>
-        \` : ''}
       \`;
     }
 
-    function openGroup(id) {
-      vscode.postMessage({ type: 'openGroup', groupId: id });
+    function openGroup(title) {
+      vscode.postMessage({ type: 'openGroup', groupTitle: title });
     }
 
     function openFlag(file, line) {
@@ -477,6 +483,26 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
     function selectFile() {
       vscode.postMessage({ type: 'selectFile' });
+    }
+
+    function unloadReview() {
+      vscode.postMessage({ type: 'unloadReview' });
+    }
+
+    function highlightGroup(index) {
+      document.querySelectorAll('.group').forEach((el, i) => {
+        el.classList.toggle('selected', i === index);
+      });
+    }
+
+    function showEmpty() {
+      document.getElementById('root').innerHTML = \`
+        <div class="empty">
+          <p>No review loaded</p>
+          <p style="font-size: 12px;">Select a review JSON file to get started.</p>
+          <button class="select-btn" onclick="selectFile()">Select Review File</button>
+        </div>
+      \`;
     }
 
     function esc(s) {

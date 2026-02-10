@@ -70,29 +70,15 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "humanReview.openGroup",
-      (groupId: string) => {
-        provider.openGroup(groupId);
+      (groupTitle: string) => {
+        provider.openGroup(groupTitle);
       }
     )
   );
 
-  // Command: Next group (keyboard nav)
-  context.subscriptions.push(
-    vscode.commands.registerCommand("humanReview.nextGroup", () => {
-      provider.nextGroup();
-    })
-  );
-
-  // Command: Previous group (keyboard nav)
-  context.subscriptions.push(
-    vscode.commands.registerCommand("humanReview.prevGroup", () => {
-      provider.prevGroup();
-    })
-  );
-
-  // Auto-detect: watch for .review/review.json in workspace
+  // Auto-detect: watch for ./human-review.json in workspace
   const watcher = vscode.workspace.createFileSystemWatcher(
-    "**/.review/review.json"
+    "**/human-review.json"
   );
 
   watcher.onDidChange((uri) => {

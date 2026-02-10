@@ -1,7 +1,7 @@
 {
   "name": "human-review",
   "displayName": "Human Review",
-  "description": "Renders AI-generated human PR reviews with native diff editors",
+  "description": "Renders AI-generated semantic code reviews with native diff editors",
   "version": "0.1.0",
   "engines": {
     "vscode": "^1.85.0"
@@ -22,14 +22,6 @@
       {
         "command": "humanReview.openGroup",
         "title": "Human Review: Open Group"
-      },
-      {
-        "command": "humanReview.nextGroup",
-        "title": "Human Review: Next Group"
-      },
-      {
-        "command": "humanReview.prevGroup",
-        "title": "Human Review: Previous Group"
       }
     ],
     "viewsContainers": {
@@ -37,7 +29,7 @@
         {
           "id": "human-review",
           "title": "Human Review",
-          "icon": "$(git-pull-request)"
+          "icon": "$(code-review)"
         }
       ]
     },
@@ -49,19 +41,7 @@
           "name": "Changes"
         }
       ]
-    },
-    "keybindings": [
-      {
-        "command": "humanReview.nextGroup",
-        "key": "ctrl+shift+]",
-        "mac": "cmd+shift+]"
-      },
-      {
-        "command": "humanReview.prevGroup",
-        "key": "ctrl+shift+[",
-        "mac": "cmd+shift+["
-      }
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",
