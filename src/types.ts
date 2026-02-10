@@ -4,6 +4,7 @@ export interface Review {
     head: string;
   };
 
+  explanation: string;
   groups: Group[];
   flags?: Flag[];
 }

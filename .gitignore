@@ -4,3 +4,17 @@ node_modules
 .vscode-test/
 *.vsix
 .review/
+human-review.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
