@@ -22,3 +22,8 @@ export interface Flag {
   file: string;
   line: number;
 }
+
+export interface ValidationResult {
+  missingFiles: string[];   // in git diff but not in review
+  phantomFiles: string[];   // in review but not in git diff
+}

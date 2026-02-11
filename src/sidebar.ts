@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { Review } from "./types";
+import * as cp from "child_process";
+import { Review, ValidationResult } from "./types";
 
 export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -10,6 +11,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   private reviewMtime?: Date;
   private currentGroupIndex = 0;
   private explanationPanel?: vscode.WebviewPanel;
+  private validation?: ValidationResult;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -21,6 +23,9 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       this.reviewPath = filePath;
       this.reviewMtime = stat.mtime;
       this.currentGroupIndex = 0;
+
+      // Validate files against git diff
+      this.validation = await this.validateFiles(this.review!);
 
       // Close any existing diff tabs from previous review
       await this.closeAllDiffTabs();
@@ -35,9 +40,19 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
         this.openExplanation();
       }
 
-      vscode.window.showInformationMessage(
-        `Loaded review: ${this.review?.groups.length ?? 0} groups`
-      );
+      // Show toast with validation warnings
+      const missing = this.validation.missingFiles.length;
+      const phantom = this.validation.phantomFiles.length;
+      if (missing > 0 || phantom > 0) {
+        const parts: string[] = [];
+        if (missing > 0) { parts.push(`${missing} file${missing !== 1 ? 's' : ''} missing from review`); }
+        if (phantom > 0) { parts.push(`${phantom} phantom file${phantom !== 1 ? 's' : ''}`); }
+        vscode.window.showErrorMessage(`Review mismatch: ${parts.join(', ')}`);
+      } else {
+        vscode.window.showInformationMessage(
+          `Loaded review: ${this.review?.groups.length ?? 0} groups`
+        );
+      }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to load review: ${error}`);
     }
@@ -74,8 +89,12 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
     const baseRef = this.review.meta.base;
 
-    // Open all files in the group as separate diff tabs
-    for (const filePath of group.files) {
+    // Filter out phantom files
+    const phantomSet = new Set(this.validation?.phantomFiles ?? []);
+    const validFiles = group.files.filter(f => !phantomSet.has(f));
+
+    // Open all valid files in the group as separate diff tabs
+    for (const filePath of validFiles) {
       const baseUri = vscode.Uri.parse(
         `human-review-git:${filePath}?ref=${baseRef}`
       );
@@ -96,7 +115,57 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async validateFiles(review: Review): Promise<ValidationResult> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      return { missingFiles: [], phantomFiles: [] };
+    }
+
+    const base = review.meta.base;
+    const head = review.meta.head;
+
+    // Get actual changed files from git
+    const diffFiles = await new Promise<string[]>((resolve) => {
+      cp.exec(
+        `git diff --name-only ${base}..${head}`,
+        { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 },
+        (error, stdout) => {
+          if (error) {
+            resolve([]);
+            return;
+          }
+          resolve(stdout.trim().split('\n').filter(Boolean));
+        }
+      );
+    });
+
+    const diffSet = new Set(diffFiles);
+
+    // Collect all files referenced in the review
+    const reviewFiles = new Set<string>();
+    for (const group of review.groups) {
+      for (const file of group.files) {
+        reviewFiles.add(file);
+      }
+    }
+    if (review.flags) {
+      for (const flag of review.flags) {
+        reviewFiles.add(flag.file);
+      }
+    }
+
+    const missingFiles = diffFiles.filter(f => !reviewFiles.has(f));
+    const phantomFiles = [...reviewFiles].filter(f => !diffSet.has(f));
+
+    return { missingFiles, phantomFiles };
+  }
+
   private async openSingleFile(filePath: string) {
+    if (this.validation?.phantomFiles.includes(filePath)) {
+      vscode.window.showWarningMessage(`Cannot open diff: ${filePath} is not in the git diff`);
+      return;
+    }
+
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot || !this.review) {
       return;
@@ -201,7 +270,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     if (!this.view || !this.review) {
       return;
     }
-    this.view.webview.postMessage({ type: "update", review: this.review, mtime: this.reviewMtime?.toISOString() });
+    this.view.webview.postMessage({ type: "update", review: this.review, mtime: this.reviewMtime?.toISOString(), validation: this.validation });
   }
 
   resolveWebviewView(
@@ -236,6 +305,11 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async openFlag(file: string, line: number) {
+    if (this.validation?.phantomFiles.includes(file)) {
+      vscode.window.showWarningMessage(`Cannot open diff: ${file} is not in the git diff`);
+      return;
+    }
+
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!workspaceRoot || !this.review) {
       return;
@@ -292,6 +366,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     this.review = undefined;
     this.reviewPath = undefined;
     this.reviewMtime = undefined;
+    this.validation = undefined;
     this.currentGroupIndex = 0;
     this.explanationPanel?.dispose();
     await this.closeAllDiffTabs();
@@ -670,6 +745,39 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-descriptionForeground);
       font-weight: 500;
     }
+    .validation-banner {
+      border-bottom: 1px solid var(--vscode-panel-border);
+    }
+    .validation-header {
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--vscode-editorError-foreground);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+    .validation-header:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+    .validation-content {
+      padding: 0 12px 8px 12px;
+      font-size: 12px;
+    }
+    .validation-subtitle {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--vscode-descriptionForeground);
+      margin: 8px 0 4px 0;
+    }
+    .phantom-file {
+      color: var(--vscode-descriptionForeground);
+      cursor: default;
+    }
+    .phantom-file:hover {
+      background: none !important;
+    }
   </style>
 </head>
 <body>
@@ -682,12 +790,13 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   </div>
   <script>
     const vscode = acquireVsCodeApi();
+    let _phantomSet = new Set();
 
     window.addEventListener('message', e => {
       if (e.data.type === 'update') {
-        render(e.data.review, e.data.mtime);
+        render(e.data.review, e.data.mtime, e.data.validation);
         const prev = vscode.getState() || {};
-        vscode.setState({ review: e.data.review, mtime: e.data.mtime, selectedGroup: -1, collapsedDirs: prev.collapsedDirs || [], expandedGroups: prev.expandedGroups || [] });
+        vscode.setState({ review: e.data.review, mtime: e.data.mtime, validation: e.data.validation, selectedGroup: -1, collapsedDirs: prev.collapsedDirs || [], expandedGroups: prev.expandedGroups || [] });
       } else if (e.data.type === 'selectGroup') {
         highlightGroup(e.data.index);
         const state = vscode.getState() || {};
@@ -701,7 +810,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     // Restore state when webview is re-created (e.g. after switching views)
     const savedState = vscode.getState();
     if (savedState?.review) {
-      render(savedState.review, savedState.mtime);
+      render(savedState.review, savedState.mtime, savedState.validation);
       if (savedState.selectedFlag >= 0) {
         highlightFlag(savedState.selectedFlag);
       } else if (savedState.selectedGroup >= 0) {
@@ -722,12 +831,15 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
-    function render(review, mtime) {
+    function render(review, mtime, validation) {
       const root = document.getElementById('root');
       const state = vscode.getState() || {};
       const expandedGroups = state.expandedGroups || [];
       const groupsCollapsed = state.groupsCollapsed || false;
       const flagsCollapsed = state.flagsCollapsed || false;
+      const validationCollapsed = state.validationCollapsed || false;
+      _phantomSet = new Set(validation?.phantomFiles || []);
+      const hasWarnings = validation && (validation.missingFiles.length > 0 || validation.phantomFiles.length > 0);
 
       root.innerHTML = \`
         \${review.explanation ? \`<div class="explanation-link" onclick="openExplanation()">
@@ -741,6 +853,18 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
             <button class="unload-btn" onclick="unloadReview()" title="Close review">\u2715</button>
           </div>
         </div>\`}
+
+        \${hasWarnings ? \`<div class="validation-banner">
+          <div class="validation-header" onclick="toggleSection('validation')">
+            <span>\u2716</span>
+            <span>Error: \${validation.missingFiles.length ? validation.missingFiles.length + ' missing' : ''}\${validation.missingFiles.length && validation.phantomFiles.length ? ', ' : ''}\${validation.phantomFiles.length ? validation.phantomFiles.length + ' phantom' : ''}</span>
+            <span class="tree-chevron">\${validationCollapsed ? '\u25B8' : '\u25BE'}</span>
+          </div>
+          \${!validationCollapsed ? \`<div class="validation-content">
+            \${validation.phantomFiles.length ? \`<div class="validation-subtitle">Phantom files (not in diff)</div>\${validation.phantomFiles.map(f => '<div style="padding: 2px 0; color: var(--vscode-descriptionForeground);"><span style="color: var(--vscode-editorError-foreground)">\u2716</span> <span style="text-decoration: line-through">' + esc(f) + '</span></div>').join('')}\` : ''}
+            \${validation.missingFiles.length ? \`<div class="validation-subtitle">Missing from review</div>\${buildGroupTree(validation.missingFiles, 'missing')}\` : ''}
+          </div>\` : ''}
+        </div>\` : ''}
 
         <div class="section-header" onclick="toggleSection('groups')"><span class="tree-chevron">\${groupsCollapsed ? '\u25B8' : '\u25BE'}</span>\${review.groups.length} Review Group\${review.groups.length !== 1 ? 's' : ''}</div>
 
@@ -890,9 +1014,15 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
           if (!ic) h += renderNode(compacted.node, depth + 1, dp);
         }
         for (const [name, fullPath] of leaves) {
-          h += '<div class="tree-file" style="padding-left:' + (depth * 16 + 24) + 'px" data-path="' + esc(fullPath) + '" onclick="event.stopPropagation(); openFile(this.dataset.path)">';
-          h += '<span class="tree-file-icon">\u25A0</span>' + esc(name);
-          h += '</div>';
+          if (_phantomSet.has(fullPath)) {
+            h += '<div class="tree-file phantom-file" style="padding-left:' + (depth * 16 + 24) + 'px">';
+            h += '<span class="tree-file-icon" style="color: var(--vscode-editorError-foreground)">\u2716</span><span style="text-decoration: line-through">' + esc(name) + '</span>';
+            h += '</div>';
+          } else {
+            h += '<div class="tree-file" style="padding-left:' + (depth * 16 + 24) + 'px" data-path="' + esc(fullPath) + '" onclick="event.stopPropagation(); openFile(this.dataset.path)">';
+            h += '<span class="tree-file-icon">\u25A0</span>' + esc(name);
+            h += '</div>';
+          }
         }
         return h;
       }
@@ -909,7 +1039,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       const key = section + 'Collapsed';
       vscode.setState({ ...state, [key]: !state[key] });
       if (state.review) {
-        render(state.review, state.mtime);
+        render(state.review, state.mtime, state.validation);
         if (state.selectedFlag >= 0) highlightFlag(state.selectedFlag);
         else if (state.selectedGroup >= 0) highlightGroup(state.selectedGroup);
       }
@@ -925,7 +1055,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       }
       vscode.setState({ ...state, expandedGroups: expanded });
       if (state.review) {
-        render(state.review, state.mtime);
+        render(state.review, state.mtime, state.validation);
         if (state.selectedFlag >= 0) highlightFlag(state.selectedFlag);
         else if (state.selectedGroup >= 0) highlightGroup(state.selectedGroup);
       }
@@ -941,7 +1071,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       }
       vscode.setState({ ...state, collapsedDirs: collapsed });
       if (state.review) {
-        render(state.review, state.mtime);
+        render(state.review, state.mtime, state.validation);
         if (state.selectedFlag >= 0) highlightFlag(state.selectedFlag);
         else if (state.selectedGroup >= 0) highlightGroup(state.selectedGroup);
       }
