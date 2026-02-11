@@ -26,7 +26,7 @@ Write an explanation of the changes for the human reviewer. This is the first th
 - Call out anything the reviewer should pay special attention to
 - Don't repeat the group titles — the explanation gives the big picture, groups give the details
 - Use markdown formatting: headings, bullet points, code spans (`likethis`) for readability
-- **Be didactic when the PR is non-trivial** — help the reviewer understand the domain, the pattern, or the architectural decision. Explain *why* things work the way they do, not just *what* changed. For trivial PRs (typos, version bumps), keep it brief
+- **Be didactic when the PR is non-trivial** — help the reviewer understand the domain, the pattern, or the architectural decision. Explain _why_ things work the way they do, not just _what_ changed. For trivial PRs (typos, version bumps), keep it brief
 
 ## Grouping
 

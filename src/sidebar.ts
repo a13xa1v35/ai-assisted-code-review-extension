@@ -96,6 +96,34 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async openSingleFile(filePath: string) {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot || !this.review) {
+      return;
+    }
+
+    const baseRef = this.review.meta.base;
+    const baseUri = vscode.Uri.parse(
+      `human-review-git:${filePath}?ref=${baseRef}`
+    );
+    const headUri = vscode.Uri.file(path.join(workspaceRoot, filePath));
+
+    await this.closeAllDiffTabs();
+
+    try {
+      await vscode.commands.executeCommand(
+        "vscode.diff",
+        baseUri,
+        headUri,
+        filePath
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Failed to open diff for ${filePath}: ${error}`
+      );
+    }
+  }
+
   private async openExplanation() {
     if (!this.review?.explanation) {
       return;
@@ -192,6 +220,8 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
         this.openFlag(msg.file, msg.line);
       } else if (msg.type === "openExplanation") {
         this.openExplanation();
+      } else if (msg.type === "openFile") {
+        this.openSingleFile(msg.file);
       } else if (msg.type === "selectFile") {
         this.promptSelectFile();
       } else if (msg.type === "unloadReview") {
@@ -388,25 +418,37 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-list-hoverBackground);
     }
     .group {
-      padding: 12px;
       border-bottom: 1px solid var(--vscode-panel-border);
+    }
+    .group-header {
+      padding: 12px;
       cursor: pointer;
     }
-    .group:hover {
+    .group-header:hover {
       background: var(--vscode-list-hoverBackground);
     }
     .group-title {
       font-weight: 500;
       margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .group-title-text {
+      flex: 1;
+      min-width: 0;
     }
     .group-summary {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
-      margin-bottom: 4px;
     }
     .group-meta {
-      font-size: 11px;
+      padding: 8px 12px;
       color: var(--vscode-descriptionForeground);
+      border-top: 1px solid var(--vscode-panel-border);
+    }
+    .group-meta:hover {
+      background: var(--vscode-list-hoverBackground);
     }
     .section-header {
       padding: 8px 12px;
@@ -512,22 +554,21 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     .fc-green { color: var(--vscode-testing-iconPassed); }
     .fc-yellow { color: var(--vscode-editorWarning-foreground); }
     .fc-red { color: var(--vscode-editorError-foreground); }
-    .group.selected .fc-green,
-    .group.selected .fc-yellow,
-    .group.selected .fc-red {
-      color: var(--vscode-list-activeSelectionForeground);
-    }
-    .group.selected {
+    .group.selected .group-header {
       background: var(--vscode-list-activeSelectionBackground);
       color: var(--vscode-list-activeSelectionForeground);
     }
-    .group.selected:hover {
+    .group.selected .group-header:hover {
       background: var(--vscode-list-activeSelectionBackground);
     }
-    .group.selected .group-summary,
-    .group.selected .group-meta {
+    .group.selected .group-summary {
       color: var(--vscode-list-activeSelectionForeground);
       opacity: 0.9;
+    }
+    .group.selected .group-header .fc-green,
+    .group.selected .group-header .fc-yellow,
+    .group.selected .group-header .fc-red {
+      color: var(--vscode-list-activeSelectionForeground);
     }
     .header-row {
       display: flex;
@@ -548,6 +589,67 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-toolbar-hoverBackground);
       color: var(--vscode-foreground);
     }
+    .group-file-tree {
+      padding: 4px 0 8px 0;
+      border-top: 1px solid var(--vscode-panel-border);
+    }
+    .tree-prefix-line {
+      padding: 3px 8px 3px 24px;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+    }
+    .file-count-toggle {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+    }
+    .tree-dir {
+      padding: 3px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      user-select: none;
+    }
+    .tree-dir:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+    .tree-chevron {
+      font-size: 10px;
+      width: 12px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .tree-file {
+      padding: 3px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      user-select: none;
+      color: var(--vscode-textLink-foreground);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .tree-file:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+    .tree-file-icon {
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .tree-group-badge {
+      font-size: 10px;
+      min-width: 16px;
+      height: 16px;
+      line-height: 16px;
+      text-align: center;
+      border-radius: 3px;
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+    }
   </style>
 </head>
 <body>
@@ -564,7 +666,8 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     window.addEventListener('message', e => {
       if (e.data.type === 'update') {
         render(e.data.review, e.data.mtime);
-        vscode.setState({ review: e.data.review, mtime: e.data.mtime, selectedGroup: -1 });
+        const prev = vscode.getState() || {};
+        vscode.setState({ review: e.data.review, mtime: e.data.mtime, selectedGroup: -1, collapsedDirs: prev.collapsedDirs || [], expandedGroups: prev.expandedGroups || [] });
       } else if (e.data.type === 'selectGroup') {
         highlightGroup(e.data.index);
         const state = vscode.getState() || {};
@@ -601,6 +704,8 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
     function render(review, mtime) {
       const root = document.getElementById('root');
+      const state = vscode.getState() || {};
+      const expandedGroups = state.expandedGroups || [];
 
       root.innerHTML = \`
         <div class="header">
@@ -614,10 +719,13 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
         \${review.explanation ? \`<div class="explanation-link" onclick="openExplanation()">Changes Explanation</div>\` : ''}
 
         \${review.groups.map((g, i) => \`
-          <div class="group" id="group-\${i}" onclick="openGroup('\${esc(g.title)}')">
-            <div class="group-title">\${i + 1}. \${esc(g.title)}</div>
-            \${g.summary ? \`<div class="group-summary">\${inlineCode(g.summary)}</div>\` : ''}
-            <div class="group-meta"><span class="file-count \${g.files.length < 5 ? 'fc-green' : g.files.length < 10 ? 'fc-yellow' : 'fc-red'}">\${g.files.length} file\${g.files.length !== 1 ? 's' : ''}</span></div>
+          <div class="group" id="group-\${i}">
+            <div class="group-header" onclick="openGroup('\${esc(g.title)}')">
+              <div class="group-title"><span class="group-title-text">\${esc(g.title)}</span><span class="tree-group-badge">\${i + 1}</span></div>
+              \${g.summary ? \`<div class="group-summary">\${inlineCode(g.summary)}</div>\` : ''}
+            </div>
+            <div class="group-meta" onclick="toggleGroupFiles(\${i})"><span class="file-count-toggle \${g.files.length < 5 ? 'fc-green' : g.files.length < 10 ? 'fc-yellow' : 'fc-red'}"><span class="tree-chevron">\${expandedGroups.includes(i) ? '\u25BE' : '\u25B8'}</span>\${g.files.length} file\${g.files.length !== 1 ? 's' : ''}</span></div>
+            \${expandedGroups.includes(i) ? buildGroupTree(g.files, i) : ''}
           </div>
         \`).join('')}
 
@@ -696,6 +804,114 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
           <button class="select-btn" onclick="selectFile()">Select Review File</button>
         </div>
       \`;
+    }
+
+    function buildGroupTree(files, groupIndex) {
+      if (files.length === 0) return '';
+
+      const parts = files.map(f => f.split('/'));
+      let commonLen = 0;
+      if (parts.length > 0) {
+        for (let i = 0; i < parts[0].length - 1; i++) {
+          if (parts.every(p => i < p.length - 1 && p[i] === parts[0][i])) {
+            commonLen = i + 1;
+          } else break;
+        }
+      }
+      const prefix = commonLen > 0 ? parts[0].slice(0, commonLen).join('/') + '/' : '';
+
+      const tree = {};
+      for (const file of files) {
+        const segs = file.split('/').slice(commonLen);
+        let node = tree;
+        for (let i = 0; i < segs.length; i++) {
+          if (i === segs.length - 1) {
+            node[segs[i]] = file;
+          } else {
+            if (!node[segs[i]] || typeof node[segs[i]] === 'string') node[segs[i]] = {};
+            node = node[segs[i]];
+          }
+        }
+      }
+
+      const state = vscode.getState() || {};
+      const collapsed = state.collapsedDirs || [];
+      const gp = 'g' + groupIndex + ':';
+
+      function compactDir(name, obj) {
+        const entries = Object.entries(obj);
+        const dirs = entries.filter(([, v]) => v !== null && typeof v === 'object');
+        const fl = entries.filter(([, v]) => typeof v === 'string');
+        if (dirs.length === 1 && fl.length === 0) {
+          return compactDir(name + '/' + dirs[0][0], dirs[0][1]);
+        }
+        return { label: name, node: obj };
+      }
+
+      function renderNode(obj, depth, pathPrefix) {
+        let h = '';
+        const entries = Object.entries(obj);
+        const dirs = entries.filter(([, v]) => v !== null && typeof v === 'object').sort((a, b) => a[0].localeCompare(b[0]));
+        const leaves = entries.filter(([, v]) => typeof v === 'string').sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [name, children] of dirs) {
+          const compacted = compactDir(name, children);
+          const dp = pathPrefix ? pathPrefix + '/' + compacted.label : compacted.label;
+          const key = gp + dp;
+          const ic = collapsed.includes(key);
+          h += '<div class="tree-dir" style="padding-left:' + (depth * 16 + 8) + 'px" data-path="' + esc(key) + '" onclick="event.stopPropagation(); toggleDir(this.dataset.path)">';
+          h += '<span class="tree-chevron">' + (ic ? '\u25B8' : '\u25BE') + '</span>' + esc(compacted.label);
+          h += '</div>';
+          if (!ic) h += renderNode(compacted.node, depth + 1, dp);
+        }
+        for (const [name, fullPath] of leaves) {
+          h += '<div class="tree-file" style="padding-left:' + (depth * 16 + 24) + 'px" data-path="' + esc(fullPath) + '" onclick="event.stopPropagation(); openFile(this.dataset.path)">';
+          h += '<span class="tree-file-icon">\u25A0</span>' + esc(name);
+          h += '</div>';
+        }
+        return h;
+      }
+
+      let html = '<div class="group-file-tree">';
+      if (prefix) html += '<div class="tree-prefix-line">' + esc(prefix) + '</div>';
+      html += renderNode(tree, 0, '');
+      html += '</div>';
+      return html;
+    }
+
+    function toggleGroupFiles(index) {
+      const state = vscode.getState() || {};
+      let expanded = state.expandedGroups || [];
+      if (expanded.includes(index)) {
+        expanded = expanded.filter(i => i !== index);
+      } else {
+        expanded.push(index);
+      }
+      vscode.setState({ ...state, expandedGroups: expanded });
+      if (state.review) {
+        render(state.review, state.mtime);
+        if (state.selectedFlag >= 0) highlightFlag(state.selectedFlag);
+        else if (state.selectedGroup >= 0) highlightGroup(state.selectedGroup);
+      }
+    }
+
+    function toggleDir(dirPath) {
+      const state = vscode.getState() || {};
+      let collapsed = state.collapsedDirs || [];
+      if (collapsed.includes(dirPath)) {
+        collapsed = collapsed.filter(d => d !== dirPath);
+      } else {
+        collapsed.push(dirPath);
+      }
+      vscode.setState({ ...state, collapsedDirs: collapsed });
+      if (state.review) {
+        render(state.review, state.mtime);
+        if (state.selectedFlag >= 0) highlightFlag(state.selectedFlag);
+        else if (state.selectedGroup >= 0) highlightGroup(state.selectedGroup);
+      }
+    }
+
+    function openFile(filePath) {
+      vscode.postMessage({ type: 'openFile', file: filePath });
     }
 
     function esc(s) {
