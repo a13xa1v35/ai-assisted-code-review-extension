@@ -383,6 +383,8 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   <style>
     body {
       font-family: var(--vscode-font-family);
+      font-size: 13px;
+      line-height: 1.5;
       padding: 0;
       margin: 0;
       color: var(--vscode-foreground);
@@ -393,16 +395,9 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-descriptionForeground);
     }
     .header {
-      padding: 12px;
+      padding: 10px 12px;
       border-bottom: 1px solid var(--vscode-panel-border);
-      position: sticky;
-      top: 0;
       background: var(--vscode-sideBar-background);
-    }
-    .header-date {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-      margin-top: 4px;
     }
     .explanation-link {
       padding: 10px 12px;
@@ -417,22 +412,31 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     .explanation-link:hover {
       background: var(--vscode-list-hoverBackground);
     }
+    .explanation-spacer {
+      flex: 1;
+    }
+    .explanation-date {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      white-space: nowrap;
+    }
     .group {
       border-bottom: 1px solid var(--vscode-panel-border);
     }
     .group-header {
       padding: 12px;
       cursor: pointer;
+      line-height: 1.4;
     }
     .group-header:hover {
       background: var(--vscode-list-hoverBackground);
     }
     .group-title {
       font-weight: 500;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
     }
     .group-title-text {
       flex: 1;
@@ -441,6 +445,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     .group-summary {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
+      line-height: 1.5;
     }
     .group-meta {
       padding: 8px 12px;
@@ -451,19 +456,28 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-list-hoverBackground);
     }
     .section-header {
-      padding: 8px 12px;
+      padding: 10px 12px;
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
       color: var(--vscode-descriptionForeground);
       background: var(--vscode-sideBar-background);
       border-bottom: 1px solid var(--vscode-panel-border);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      user-select: none;
+    }
+    .section-header:hover {
+      background: var(--vscode-list-hoverBackground);
     }
     .flags {
       padding: 0;
     }
     .flag {
-      padding: 8px 12px;
+      padding: 10px 12px;
       font-size: 12px;
       display: flex;
       align-items: flex-start;
@@ -501,11 +515,13 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
     .flag-title {
       font-weight: 500;
+      line-height: 1.4;
     }
     .flag-summary {
       font-size: 12px;
       color: var(--vscode-descriptionForeground);
-      margin-top: 2px;
+      margin-top: 6px;
+      line-height: 1.5;
     }
     .group-summary code, .flag-summary code {
       font-family: var(--vscode-editor-font-family);
@@ -516,8 +532,8 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
     .flag-location {
       font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-      margin-top: 2px;
+      color: var(--vscode-textLink-foreground);
+      margin-top: 6px;
     }
     .flag-copy {
       flex-shrink: 0;
@@ -569,6 +585,10 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     .group.selected .group-header .fc-yellow,
     .group.selected .group-header .fc-red {
       color: var(--vscode-list-activeSelectionForeground);
+    }
+    .group.selected .tree-group-badge {
+      color: var(--vscode-list-activeSelectionForeground);
+      opacity: 0.8;
     }
     .header-row {
       display: flex;
@@ -641,14 +661,14 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       flex-shrink: 0;
     }
     .tree-group-badge {
-      font-size: 10px;
+      font-size: 11px;
       min-width: 16px;
       height: 16px;
       line-height: 16px;
       text-align: center;
       border-radius: 3px;
-      background: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
+      color: var(--vscode-descriptionForeground);
+      font-weight: 500;
     }
   </style>
 </head>
@@ -706,32 +726,38 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       const root = document.getElementById('root');
       const state = vscode.getState() || {};
       const expandedGroups = state.expandedGroups || [];
+      const groupsCollapsed = state.groupsCollapsed || false;
+      const flagsCollapsed = state.flagsCollapsed || false;
 
       root.innerHTML = \`
-        <div class="header">
+        \${review.explanation ? \`<div class="explanation-link" onclick="openExplanation()">
+          <span>Changes Explanation</span>
+          <span class="explanation-spacer"></span>
+          \${mtime ? \`<span class="explanation-date">\${formatDate(mtime)}</span>\` : ''}
+          <button class="unload-btn" onclick="event.stopPropagation(); unloadReview()" title="Close review">\u2715</button>
+        </div>\` : \`<div class="header">
           <div class="header-row">
-            <strong>\${review.groups.length} Review Group\${review.groups.length !== 1 ? 's' : ''}</strong>
+            <span></span>
             <button class="unload-btn" onclick="unloadReview()" title="Close review">\u2715</button>
           </div>
-          \${mtime ? \`<div class="header-date">\${formatDate(mtime)}</div>\` : ''}
-        </div>
+        </div>\`}
 
-        \${review.explanation ? \`<div class="explanation-link" onclick="openExplanation()">Changes Explanation</div>\` : ''}
+        <div class="section-header" onclick="toggleSection('groups')"><span class="tree-chevron">\${groupsCollapsed ? '\u25B8' : '\u25BE'}</span>\${review.groups.length} Review Group\${review.groups.length !== 1 ? 's' : ''}</div>
 
-        \${review.groups.map((g, i) => \`
+        \${!groupsCollapsed ? review.groups.map((g, i) => \`
           <div class="group" id="group-\${i}">
             <div class="group-header" onclick="openGroup('\${esc(g.title)}')">
-              <div class="group-title"><span class="group-title-text">\${esc(g.title)}</span><span class="tree-group-badge">\${i + 1}</span></div>
+              <div class="group-title"><span class="tree-group-badge">\${i + 1}</span><span class="group-title-text">\${esc(g.title)}</span></div>
               \${g.summary ? \`<div class="group-summary">\${inlineCode(g.summary)}</div>\` : ''}
             </div>
             <div class="group-meta" onclick="toggleGroupFiles(\${i})"><span class="file-count-toggle \${g.files.length < 5 ? 'fc-green' : g.files.length < 10 ? 'fc-yellow' : 'fc-red'}"><span class="tree-chevron">\${expandedGroups.includes(i) ? '\u25BE' : '\u25B8'}</span>\${g.files.length} file\${g.files.length !== 1 ? 's' : ''}</span></div>
             \${expandedGroups.includes(i) ? buildGroupTree(g.files, i) : ''}
           </div>
-        \`).join('')}
+        \`).join('') : ''}
 
         \${review.flags?.length ? \`
-          <div class="section-header">Flags</div>
-          <div class="flags">
+          <div class="section-header" onclick="toggleSection('flags')"><span class="tree-chevron">\${flagsCollapsed ? '\u25B8' : '\u25BE'}</span>Flags</div>
+          \${!flagsCollapsed ? \`<div class="flags">
             \${review.flags.map((f, i) => \`
               <div class="flag flag-\${f.severity}" id="flag-\${i}" onclick="openFlag('\${esc(f.file)}', \${f.line}, \${i})">
                 <span class="flag-icon">\${f.severity === 'error' ? '\u2716' : f.severity === 'warning' ? '\u26A0' : '\u24D8'}</span>
@@ -743,7 +769,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
                 <button class="flag-copy" onclick="copyFlag(event, '\${esc(f.title)}', '\${esc(f.summary || '')}')" title="Copy to clipboard">\u2398</button>
               </div>
             \`).join('')}
-          </div>
+          </div>\` : ''}
         \` : ''}
 
       \`;
@@ -876,6 +902,17 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       html += renderNode(tree, 0, '');
       html += '</div>';
       return html;
+    }
+
+    function toggleSection(section) {
+      const state = vscode.getState() || {};
+      const key = section + 'Collapsed';
+      vscode.setState({ ...state, [key]: !state[key] });
+      if (state.review) {
+        render(state.review, state.mtime);
+        if (state.selectedFlag >= 0) highlightFlag(state.selectedFlag);
+        else if (state.selectedGroup >= 0) highlightGroup(state.selectedGroup);
+      }
     }
 
     function toggleGroupFiles(index) {
