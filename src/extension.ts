@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as cp from "child_process";
-import { ReviewSidebarProvider } from "./sidebar";
+import { ReviewSidebarProvider, ExplanationContentProvider } from "./sidebar";
 
 class GitContentProvider implements vscode.TextDocumentContentProvider {
   provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
@@ -51,8 +51,17 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  // Register explanation content provider for markdown preview
+  const explanationProvider = new ExplanationContentProvider();
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(
+      "human-review-explanation",
+      explanationProvider
+    )
+  );
+
   // Create sidebar provider
-  const provider = new ReviewSidebarProvider(context.extensionUri);
+  const provider = new ReviewSidebarProvider(context.extensionUri, explanationProvider);
 
   // Register sidebar webview
   context.subscriptions.push(

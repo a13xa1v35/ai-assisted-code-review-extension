@@ -4,16 +4,40 @@ import * as path from "path";
 import * as cp from "child_process";
 import { Review, ValidationResult } from "./types";
 
+export const EXPLANATION_URI = vscode.Uri.parse('human-review-explanation:Explanation.md');
+
+export class ExplanationContentProvider implements vscode.TextDocumentContentProvider {
+  private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidChange = this._onDidChange.event;
+  private content = '';
+
+  update(content: string) {
+    this.content = content;
+    this._onDidChange.fire(EXPLANATION_URI);
+  }
+
+  clear() {
+    this.content = '';
+    this._onDidChange.fire(EXPLANATION_URI);
+  }
+
+  provideTextDocumentContent(): string {
+    return this.content;
+  }
+}
+
 export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private review?: Review;
   private reviewPath?: string;
   private reviewMtime?: Date;
   private currentGroupIndex = 0;
-  private explanationPanel?: vscode.WebviewPanel;
   private validation?: ValidationResult;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly explanationProvider: ExplanationContentProvider
+  ) {}
 
   async loadReview(filePath: string) {
     try {
@@ -198,72 +222,15 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // If panel already exists, reveal it
-    if (this.explanationPanel) {
-      this.explanationPanel.reveal();
-      return;
-    }
+    this.explanationProvider.update(this.review.explanation);
 
-    this.explanationPanel = vscode.window.createWebviewPanel(
-      'humanReview.explanation',
-      'Changes Explanation',
-      vscode.ViewColumn.One,
-      {}
-    );
-
-    this.explanationPanel.webview.html = await this.getExplanationHtml(this.review.explanation);
-
-    this.explanationPanel.onDidDispose(() => {
-      this.explanationPanel = undefined;
-    });
-  }
-
-  private async getExplanationHtml(explanation: string): Promise<string> {
-    const { marked } = await import("marked");
-    const html = marked.parse(explanation) as string;
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body {
-      font-family: var(--vscode-font-family);
-      color: var(--vscode-foreground);
-      background: var(--vscode-editor-background);
-      padding: 40px;
-      max-width: 700px;
-      margin: 0 auto;
-      line-height: 1.6;
-      font-size: 14px;
+    try {
+      await vscode.commands.executeCommand('markdown.showPreview', EXPLANATION_URI);
+    } catch {
+      // Fallback: open as raw markdown with syntax highlighting
+      const doc = await vscode.workspace.openTextDocument(EXPLANATION_URI);
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preview: true });
     }
-    h1, h2, h3 { color: var(--vscode-foreground); font-weight: 600; }
-    h1 { font-size: 18px; margin: 0 0 20px 0; }
-    h2 { font-size: 16px; margin: 24px 0 12px 0; }
-    h3 { font-size: 14px; margin: 20px 0 8px 0; }
-    p { margin: 0 0 12px 0; }
-    ul, ol { margin: 0 0 12px 0; padding-left: 24px; }
-    li { margin: 0 0 4px 0; }
-    code {
-      font-family: var(--vscode-editor-font-family);
-      font-size: 13px;
-      background: var(--vscode-textCodeBlock-background);
-      padding: 2px 5px;
-      border-radius: 3px;
-    }
-    pre {
-      background: var(--vscode-textCodeBlock-background);
-      padding: 12px;
-      border-radius: 4px;
-      overflow-x: auto;
-      margin: 0 0 12px 0;
-    }
-    pre code { background: none; padding: 0; }
-  </style>
-</head>
-<body>
-  <h1>Changes Explanation</h1>
-  ${html}
-</body>
-</html>`;
   }
 
   private refresh() {
@@ -362,13 +329,28 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async closeExplanationTab() {
+    for (const tabGroup of vscode.window.tabGroups.all) {
+      const tabsToClose = tabGroup.tabs.filter((tab) => {
+        if (tab.input instanceof vscode.TabInputText) {
+          return tab.input.uri.scheme === 'human-review-explanation';
+        }
+        return false;
+      });
+      if (tabsToClose.length > 0) {
+        await vscode.window.tabGroups.close(tabsToClose);
+      }
+    }
+  }
+
   async unloadReview() {
     this.review = undefined;
     this.reviewPath = undefined;
     this.reviewMtime = undefined;
     this.validation = undefined;
     this.currentGroupIndex = 0;
-    this.explanationPanel?.dispose();
+    this.explanationProvider.clear();
+    await this.closeExplanationTab();
     await this.closeAllDiffTabs();
     if (this.view) {
       this.view.webview.postMessage({ type: 'reset' });
