@@ -14,10 +14,15 @@ class GitContentProvider implements vscode.TextDocumentContentProvider {
       // Parse the URI: human-review-git:path/to/file?ref=abc123
       const filePath = uri.path;
       const ref = new URLSearchParams(uri.query).get("ref") || "HEAD";
+      if (ref.startsWith('-')) {
+        reject(new Error("Invalid git ref"));
+        return;
+      }
 
       // Use git show to get file content at the specified ref
-      cp.exec(
-        `git show "${ref}:${filePath}"`,
+      cp.execFile(
+        'git',
+        ['show', `${ref}:${filePath}`],
         { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 },
         (error, stdout, stderr) => {
           if (error) {
@@ -79,25 +84,39 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "humanReview.openGroup",
-      (groupTitle: string) => {
-        provider.openGroup(groupTitle);
+      (groupIndex: number) => {
+        provider.openGroup(groupIndex);
       }
     )
   );
 
   // Auto-detect: watch for ./human-review.json in workspace
   const watcher = vscode.workspace.createFileSystemWatcher(
-    "**/human-review.json"
+    "*/human-review.json"
   );
+
+  // Debounce watcher to avoid partial-write reloads
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  const debouncedLoad = (uri: vscode.Uri) => {
+    if (debounceTimer) { clearTimeout(debounceTimer); }
+    debounceTimer = setTimeout(() => {
+      provider.loadReview(uri.fsPath);
+    }, 500);
+  };
 
   watcher.onDidChange((uri) => {
     console.log("Review file changed:", uri.fsPath);
-    provider.loadReview(uri.fsPath);
+    debouncedLoad(uri);
   });
 
   watcher.onDidCreate((uri) => {
     console.log("Review file created:", uri.fsPath);
-    provider.loadReview(uri.fsPath);
+    debouncedLoad(uri);
+  });
+
+  watcher.onDidDelete((uri) => {
+    console.log("Review file deleted:", uri.fsPath);
+    provider.unloadReview();
   });
 
   context.subscriptions.push(watcher);
