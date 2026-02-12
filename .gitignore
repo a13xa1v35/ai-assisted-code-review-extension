@@ -4,7 +4,7 @@ node_modules
 .vscode-test/
 *.vsix
 .review/
-human-review.json
+code-review.json
 
 # OS
 .DS_Store

@@ -1,8 +1,13 @@
 {
-  "name": "human-review",
-  "displayName": "Human Review",
+  "name": "code-review",
+  "displayName": "AI-assisted Code Review",
   "description": "Renders AI-generated semantic code reviews with native diff editors",
-  "version": "0.2.1",
+  "version": "0.3.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a13xa1v35/ai-assisted-code-review-extension"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -10,34 +15,34 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:**/human-review.json"
+    "workspaceContains:**/code-review.json"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "humanReview.open",
-        "title": "Human Review: Open Review File"
+        "command": "codeReview.open",
+        "title": "AI-assisted Code Review: Open Review File"
       },
       {
-        "command": "humanReview.openGroup",
-        "title": "Human Review: Open Group"
+        "command": "codeReview.openGroup",
+        "title": "AI-assisted Code Review: Open Group"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "human-review",
-          "title": "Human Review",
+          "id": "code-review",
+          "title": "AI-assisted Code Review",
           "icon": "$(code-review)"
         }
       ]
     },
     "views": {
-      "human-review": [
+      "code-review": [
         {
           "type": "webview",
-          "id": "humanReview.sidebar",
+          "id": "codeReview.sidebar",
           "name": "Changes"
         }
       ]

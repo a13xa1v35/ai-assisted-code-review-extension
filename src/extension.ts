@@ -11,7 +11,7 @@ class GitContentProvider implements vscode.TextDocumentContentProvider {
         return;
       }
 
-      // Parse the URI: human-review-git:path/to/file?ref=abc123
+      // Parse the URI: code-review-git:path/to/file?ref=abc123
       const filePath = uri.path;
       const ref = new URLSearchParams(uri.query).get("ref") || "HEAD";
       if (ref.startsWith('-')) {
@@ -45,13 +45,13 @@ class GitContentProvider implements vscode.TextDocumentContentProvider {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("Human Review extension is now active");
+  console.log("AI-assisted Code Review extension is now active");
 
   // Register git content provider for diff views
   const gitProvider = new GitContentProvider();
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
-      "human-review-git",
+      "code-review-git",
       gitProvider
     )
   );
@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
   const explanationProvider = new ExplanationContentProvider();
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
-      "human-review-explanation",
+      "code-review-explanation",
       explanationProvider
     )
   );
@@ -70,12 +70,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register sidebar webview
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider("humanReview.sidebar", provider)
+    vscode.window.registerWebviewViewProvider("codeReview.sidebar", provider)
   );
 
   // Command: Open review file manually
   context.subscriptions.push(
-    vscode.commands.registerCommand("humanReview.open", async () => {
+    vscode.commands.registerCommand("codeReview.open", async () => {
       provider.promptSelectFile();
     })
   );
@@ -83,16 +83,16 @@ export function activate(context: vscode.ExtensionContext) {
   // Command: Open specific group (called from sidebar)
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "humanReview.openGroup",
+      "codeReview.openGroup",
       (groupIndex: number) => {
         provider.openGroup(groupIndex);
       }
     )
   );
 
-  // Auto-detect: watch for ./human-review.json in workspace
+  // Auto-detect: watch for ./code-review.json in workspace
   const watcher = vscode.workspace.createFileSystemWatcher(
-    "*/human-review.json"
+    "*/code-review.json"
   );
 
   // Debounce watcher to avoid partial-write reloads

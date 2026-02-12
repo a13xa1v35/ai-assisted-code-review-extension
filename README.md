@@ -1,4 +1,4 @@
-# Human Review
+# AI-assisted Code Review
 
 A VS Code extension that renders AI-generated semantic PR reviews. An AI coding agent analyzes your git diff, groups changes by logical concern, and the extension displays them in a sidebar with native diff viewing.
 
@@ -6,7 +6,7 @@ A VS Code extension that renders AI-generated semantic PR reviews. An AI coding 
 
 Two decoupled parts:
 
-1. **Skill prompt** (`skill/review.md`) — a coding agent (Claude Code, Cursor, etc.) runs this to analyze a git diff and write structured JSON to `./human-review.json`
+1. **Skill prompt** (`skill/code-review.md`) — a coding agent (Claude Code, Cursor, etc.) runs this to analyze a git diff and write structured JSON to `./code-review.json`
 2. **VS Code extension** — watches for that JSON file, renders groups in a sidebar, and opens native diff editors when clicked
 
 They communicate only via the JSON file. The extension is pure UI; the agent is pure analysis.
@@ -15,7 +15,7 @@ They communicate only via the JSON file. The extension is pure UI; the agent is 
 
 1. Open a project in VS Code with this extension installed
 2. Run the review skill from your coding agent (e.g. `/review` in Claude Code)
-3. The agent writes `human-review.json` to your workspace root
+3. The agent writes `code-review.json` to your workspace root
 4. The sidebar populates with grouped changes — click a group to open diffs
 
 ## Features

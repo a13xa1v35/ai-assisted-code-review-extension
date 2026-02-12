@@ -12,7 +12,7 @@ function isInsideWorkspace(workspaceRoot: string, filePath: string): boolean {
   return resolved.startsWith(workspaceRoot + path.sep) || resolved === workspaceRoot;
 }
 
-export const EXPLANATION_URI = vscode.Uri.parse('human-review-explanation:Explanation.md');
+export const EXPLANATION_URI = vscode.Uri.parse('code-review-explanation:Explanation.md');
 
 export class ExplanationContentProvider implements vscode.TextDocumentContentProvider {
   private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
@@ -85,7 +85,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       await this.closeAllDiffTabs();
 
       // Reveal the sidebar
-      await vscode.commands.executeCommand("humanReview.sidebar.focus");
+      await vscode.commands.executeCommand("codeReview.sidebar.focus");
 
       this.refresh();
 
@@ -133,7 +133,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      // Close existing human-review diff tabs before opening new ones
+      // Close existing code-review diff tabs before opening new ones
       await this.closeAllDiffTabs();
 
       const baseRef = this.review.meta.base;
@@ -149,7 +149,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
           continue;
         }
         const baseUri = vscode.Uri.parse(
-          `human-review-git:${filePath}?ref=${baseRef}`
+          `code-review-git:${filePath}?ref=${baseRef}`
         );
         const headUri = vscode.Uri.file(path.join(workspaceRoot, filePath));
 
@@ -237,7 +237,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
       const baseRef = this.review.meta.base;
       const baseUri = vscode.Uri.parse(
-        `human-review-git:${filePath}?ref=${baseRef}`
+        `code-review-git:${filePath}?ref=${baseRef}`
       );
       const headUri = vscode.Uri.file(path.join(workspaceRoot, filePath));
 
@@ -336,7 +336,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
       const baseRef = this.review.meta.base;
       const baseUri = vscode.Uri.parse(
-        `human-review-git:${file}?ref=${baseRef}`
+        `code-review-git:${file}?ref=${baseRef}`
       );
       const headUri = vscode.Uri.file(path.join(workspaceRoot, file));
 
@@ -382,7 +382,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     for (const tabGroup of vscode.window.tabGroups.all) {
       const tabsToClose = tabGroup.tabs.filter((tab) => {
         if (tab.input instanceof vscode.TabInputTextDiff) {
-          return tab.input.original.scheme === 'human-review-git';
+          return tab.input.original.scheme === 'code-review-git';
         }
         return false;
       });
@@ -396,7 +396,7 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     for (const tabGroup of vscode.window.tabGroups.all) {
       const tabsToClose = tabGroup.tabs.filter((tab) => {
         if (tab.input instanceof vscode.TabInputText) {
-          return tab.input.uri.scheme === 'human-review-explanation';
+          return tab.input.uri.scheme === 'code-review-explanation';
         }
         return false;
       });
