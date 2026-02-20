@@ -50,8 +50,14 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
   async loadReview(filePath: string) {
     try {
-      const content = await fs.promises.readFile(filePath, "utf-8");
       const stat = await fs.promises.stat(filePath);
+
+      // Skip reload if same file and mtime hasn't changed
+      if (this.reviewPath === filePath && this.reviewMtime && stat.mtime.getTime() === this.reviewMtime.getTime()) {
+        return;
+      }
+
+      const content = await fs.promises.readFile(filePath, "utf-8");
       const parsed = JSON.parse(content);
 
       // Validate required fields
@@ -241,8 +247,6 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       );
       const headUri = vscode.Uri.file(path.join(workspaceRoot, filePath));
 
-      await this.closeAllDiffTabs();
-
       await vscode.commands.executeCommand(
         "vscode.diff",
         baseUri,
@@ -264,6 +268,9 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     }
 
     this.explanationProvider.update(this.review.explanation);
+
+    // Close any existing explanation tab so a fresh preview gets focus
+    await this.closeExplanationTab();
 
     try {
       await vscode.commands.executeCommand('markdown.showPreview', EXPLANATION_URI);
@@ -287,7 +294,8 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ) {
     this.view = webviewView;
-    webviewView.webview.options = { enableScripts: true, localResourceRoots: [] };
+    const mediaUri = vscode.Uri.joinPath(this._extensionUri, 'media');
+    webviewView.webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
     webviewView.webview.html = this.getHtml();
 
     // Dispose previous handler if resolveWebviewView is called again
@@ -308,9 +316,12 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
       } else if (msg.type === "unloadReview") {
         this.unloadReview();
       } else if (msg.type === "ready") {
-        // Webview finished loading, send current review if we have one
+        // Webview finished loading — sync state
         if (this.review) {
           this.refresh();
+        } else {
+          // No review loaded: clear any stale webview state (e.g. file was deleted while sidebar was hidden)
+          this.view?.webview.postMessage({ type: 'reset' });
         }
       }
     });
@@ -339,8 +350,6 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
         `code-review-git:${file}?ref=${baseRef}`
       );
       const headUri = vscode.Uri.file(path.join(workspaceRoot, file));
-
-      await this.closeAllDiffTabs();
 
       await vscode.commands.executeCommand(
         "vscode.diff",
@@ -395,8 +404,13 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
   private async closeExplanationTab() {
     for (const tabGroup of vscode.window.tabGroups.all) {
       const tabsToClose = tabGroup.tabs.filter((tab) => {
+        // Raw markdown fallback
         if (tab.input instanceof vscode.TabInputText) {
           return tab.input.uri.scheme === 'code-review-explanation';
+        }
+        // Rendered markdown preview (webview)
+        if (tab.input instanceof vscode.TabInputWebview) {
+          return tab.label.includes('Explanation.md');
         }
         return false;
       });
@@ -511,6 +525,9 @@ export class ReviewSidebarProvider implements vscode.WebviewViewProvider {
 
   private getHtml(): string {
     const nonce = crypto.randomBytes(16).toString('base64');
-    return getSidebarHtml(nonce);
+    const codiconFontUri = this.view!.webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'codicon.ttf')
+    );
+    return getSidebarHtml(nonce, codiconFontUri.toString(), this.view!.webview.cspSource);
   }
 }

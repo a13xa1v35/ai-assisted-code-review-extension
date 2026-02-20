@@ -14,15 +14,15 @@ class GitContentProvider implements vscode.TextDocumentContentProvider {
       // Parse the URI: code-review-git:path/to/file?ref=abc123
       const filePath = uri.path;
       const ref = new URLSearchParams(uri.query).get("ref") || "HEAD";
-      if (ref.startsWith('-')) {
+      if (ref.startsWith("-")) {
         reject(new Error("Invalid git ref"));
         return;
       }
 
       // Use git show to get file content at the specified ref
       cp.execFile(
-        'git',
-        ['show', `${ref}:${filePath}`],
+        "git",
+        ["show", `${ref}:${filePath}`],
         { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 },
         (error, stdout, stderr) => {
           if (error) {
@@ -66,7 +66,10 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Create sidebar provider
-  const provider = new ReviewSidebarProvider(context.extensionUri, explanationProvider);
+  const provider = new ReviewSidebarProvider(
+    context.extensionUri,
+    explanationProvider
+  );
 
   // Register sidebar webview
   context.subscriptions.push(
@@ -91,14 +94,15 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Auto-detect: watch for ./code-review.json in workspace
-  const watcher = vscode.workspace.createFileSystemWatcher(
-    "*/code-review.json"
-  );
+  const watcher =
+    vscode.workspace.createFileSystemWatcher("*/code-review.json");
 
   // Debounce watcher to avoid partial-write reloads
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   const debouncedLoad = (uri: vscode.Uri) => {
-    if (debounceTimer) { clearTimeout(debounceTimer); }
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
     debounceTimer = setTimeout(() => {
       provider.loadReview(uri.fsPath);
     }, 500);

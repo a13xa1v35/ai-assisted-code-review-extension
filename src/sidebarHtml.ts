@@ -1,9 +1,32 @@
-export function getSidebarHtml(nonce: string): string {
+export function getSidebarHtml(nonce: string, codiconFontUri: string, cspSource: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src ${cspSource}; script-src 'nonce-${nonce}';">
   <style>
+    @font-face {
+      font-family: 'codicon';
+      src: url('${codiconFontUri}') format('truetype');
+    }
+    .codicon {
+      font-family: 'codicon';
+      font-size: 16px;
+      font-style: normal;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1;
+      display: inline-block;
+    }
+    .codicon-preview:before { content: "\\eb2f"; }
+    .codicon-diff-multiple:before { content: "\\ec23"; }
+    .codicon-unverified:before { content: "\\eb76"; }
+    .codicon-warning:before { content: "\\ea6c"; }
+    .codicon-close:before { content: "\\ea76"; }
+    .codicon-chevron-right:before { content: "\\eab6"; }
+    .codicon-chevron-down:before { content: "\\eab4"; }
+    .codicon-ellipsis:before { content: "\\ea7c"; }
+    .codicon-file-code:before { content: "\\eae9"; }
+    .codicon-question:before { content: "\\eb32"; }
     body {
       font-family: var(--vscode-font-family);
       font-size: 13px;
@@ -17,33 +40,61 @@ export function getSidebarHtml(nonce: string): string {
       text-align: center;
       color: var(--vscode-descriptionForeground);
     }
+    .empty-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+    .empty-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 0 0 8px 0;
+    }
+    .empty-desc {
+      font-size: 12px;
+      margin: 0;
+    }
     .header {
       padding: 10px 12px;
       border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-sideBar-background);
     }
-    .explanation-link {
+    .summary-header {
       padding: 10px 12px;
-      font-size: 12px;
-      color: var(--vscode-textLink-foreground);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--vscode-descriptionForeground);
+      background: var(--vscode-sideBar-background);
       border-bottom: 1px solid var(--vscode-panel-border);
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 6px;
+      user-select: none;
     }
-    .explanation-link:hover {
+    .summary-header:hover {
       background: var(--vscode-list-hoverBackground);
     }
-    .explanation-spacer {
+    .summary-spacer {
       flex: 1;
     }
-    .explanation-date {
+    .summary-date {
       font-size: 11px;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
       color: var(--vscode-descriptionForeground);
       white-space: nowrap;
     }
+    .section-icon {
+      font-size: 14px;
+    }
     .group {
+      margin-bottom: 4px;
       border-bottom: 1px solid var(--vscode-panel-border);
       border-left: 3px solid transparent;
     }
@@ -65,19 +116,12 @@ export function getSidebarHtml(nonce: string): string {
     .group-title-text {
       flex: 1;
       min-width: 0;
+      color: var(--vscode-descriptionForeground);
     }
     .group-summary {
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground);
+      font-size: 13px;
+      color: var(--vscode-editor-foreground);
       line-height: 1.5;
-    }
-    .group-meta {
-      padding: 8px 12px;
-      color: var(--vscode-descriptionForeground);
-      border-top: 1px solid var(--vscode-panel-border);
-    }
-    .group-meta:hover {
-      background: var(--vscode-list-hoverBackground);
     }
     .section-header {
       padding: 10px 12px;
@@ -107,6 +151,7 @@ export function getSidebarHtml(nonce: string): string {
       align-items: flex-start;
       gap: 8px;
       cursor: pointer;
+      margin-bottom: 4px;
       border-bottom: 1px solid var(--vscode-panel-border);
       border-left: 3px solid transparent;
       position: relative;
@@ -142,10 +187,11 @@ export function getSidebarHtml(nonce: string): string {
     .flag-title {
       font-weight: 500;
       line-height: 1.4;
+      color: var(--vscode-descriptionForeground);
     }
     .flag-summary {
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground);
+      font-size: 13px;
+      color: var(--vscode-editor-foreground);
       margin-top: 6px;
       line-height: 1.5;
     }
@@ -161,7 +207,7 @@ export function getSidebarHtml(nonce: string): string {
       color: var(--vscode-textLink-foreground);
       margin-top: 6px;
     }
-.select-btn {
+    .select-btn {
       background: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       border: none;
@@ -174,9 +220,6 @@ export function getSidebarHtml(nonce: string): string {
     .select-btn:hover {
       background: var(--vscode-button-hoverBackground);
     }
-    .fc-green { color: var(--vscode-testing-iconPassed); }
-    .fc-yellow { color: var(--vscode-editorWarning-foreground); }
-    .fc-red { color: var(--vscode-editorError-foreground); }
     .group.selected {
       border-left: 3px solid var(--vscode-focusBorder);
     }
@@ -201,19 +244,24 @@ export function getSidebarHtml(nonce: string): string {
     }
     .group-file-tree {
       padding: 4px 0 8px 0;
-      border-top: 1px solid var(--vscode-panel-border);
+    }
+    .tree-stats-line {
+      padding: 6px 12px;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      user-select: none;
+    }
+    .tree-stats-line:hover {
+      background: var(--vscode-list-hoverBackground);
     }
     .tree-prefix-line {
       padding: 3px 8px 3px 24px;
       font-size: 11px;
       color: var(--vscode-descriptionForeground);
-    }
-    .file-count-toggle {
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 13px;
     }
     .tree-dir {
       padding: 3px 8px;
@@ -260,31 +308,13 @@ export function getSidebarHtml(nonce: string): string {
       color: var(--vscode-descriptionForeground);
       font-weight: 500;
     }
-    .validation-banner {
-      border-bottom: 1px solid var(--vscode-panel-border);
-    }
-    .validation-header {
-      padding: 10px 12px;
+    .phantom-badge {
       font-size: 12px;
-      color: var(--vscode-editorError-foreground);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      user-select: none;
+      color: var(--vscode-editorWarning-foreground);
+      flex-shrink: 0;
     }
-    .validation-header:hover {
-      background: var(--vscode-list-hoverBackground);
-    }
-    .validation-content {
-      padding: 0 12px 8px 12px;
-      font-size: 12px;
-    }
-    .validation-subtitle {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--vscode-descriptionForeground);
-      margin: 8px 0 4px 0;
+    .uncategorized-group {
+      opacity: 0.7;
     }
     .phantom-file {
       color: var(--vscode-descriptionForeground);
@@ -298,8 +328,10 @@ export function getSidebarHtml(nonce: string): string {
 <body>
   <div id="root">
     <div class="empty">
-      <p>No review loaded</p>
-      <p style="font-size: 12px;">Select a review JSON file to get started.</p>
+      <div class="empty-icon"><span class="codicon codicon-diff-multiple"></span></div>
+      <p class="empty-title">No review loaded</p>
+      <p class="empty-desc">Open a review file to get started.</p>
+      <p class="empty-desc" style="margin-top: 4px; font-size: 11px; opacity: 0.7;">Usually named <code>code-review.json</code></p>
       <button class="select-btn" data-action="select-file">Select Review File</button>
     </div>
   </div>
@@ -309,8 +341,8 @@ export function getSidebarHtml(nonce: string): string {
 
     window.addEventListener('message', e => {
       if (e.data.type === 'update') {
-        render(e.data.review, e.data.mtime, e.data.validation);
         vscode.setState({ review: e.data.review, mtime: e.data.mtime, validation: e.data.validation, selectedGroup: -1, collapsedDirs: [], expandedGroups: [] });
+        render(e.data.review, e.data.mtime, e.data.validation);
       } else if (e.data.type === 'selectGroup') {
         highlightGroup(e.data.index);
         const state = vscode.getState() || {};
@@ -336,7 +368,7 @@ export function getSidebarHtml(nonce: string): string {
     vscode.postMessage({ type: 'ready' });
 
     function inlineCode(text) {
-      return esc(text).replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+      return esc(text).replace(/\\\`([^\\\`]+)\\\`/g, '<code>$1</code>');
     }
 
     function formatDate(iso) {
@@ -351,53 +383,77 @@ export function getSidebarHtml(nonce: string): string {
       const expandedGroups = state.expandedGroups || [];
       const groupsCollapsed = state.groupsCollapsed || false;
       const flagsCollapsed = state.flagsCollapsed || false;
-      const validationCollapsed = state.validationCollapsed || false;
       _phantomSet = new Set(validation?.phantomFiles || []);
-      const hasWarnings = validation && (validation.missingFiles.length > 0 || validation.phantomFiles.length > 0);
+      const missingFiles = validation?.missingFiles || [];
+      const uncatIndex = review.groups.length;
 
       root.innerHTML = \`
-        \${review.explanation ? \`<div class="explanation-link" data-action="open-explanation">
-          <span>Changes Explanation</span>
-          <span class="explanation-spacer"></span>
-          \${mtime ? \`<span class="explanation-date">\${formatDate(mtime)}</span>\` : ''}
-          <button class="unload-btn" data-action="unload-review" title="Close review">\u2715</button>
+        \${review.explanation ? \`<div class="summary-header" data-action="open-explanation">
+          <span class="codicon codicon-preview section-icon"></span>
+          <span>Review Summary</span>
+          <span class="summary-spacer"></span>
+          \${mtime ? \`<span class="summary-date">\${formatDate(mtime)}</span>\` : ''}
+          <button class="unload-btn" data-action="unload-review" title="Close review"><span class="codicon codicon-close" style="font-size: 12px;"></span></button>
         </div>\` : \`<div class="header">
           <div class="header-row">
             <span></span>
-            <button class="unload-btn" data-action="unload-review" title="Close review">\u2715</button>
+            <button class="unload-btn" data-action="unload-review" title="Close review"><span class="codicon codicon-close" style="font-size: 12px;"></span></button>
           </div>
         </div>\`}
 
-        \${hasWarnings ? \`<div class="validation-banner">
-          <div class="validation-header" data-action="toggle-section" data-section="validation">
-            <span>\u2716</span>
-            <span>Error: \${validation.missingFiles.length ? validation.missingFiles.length + ' missing' : ''}\${validation.missingFiles.length && validation.phantomFiles.length ? ', ' : ''}\${validation.phantomFiles.length ? validation.phantomFiles.length + ' phantom' : ''}</span>
-            <span class="tree-chevron">\${validationCollapsed ? '\u25B8' : '\u25BE'}</span>
-          </div>
-          \${!validationCollapsed ? \`<div class="validation-content">
-            \${validation.phantomFiles.length ? \`<div class="validation-subtitle">Phantom files (not in diff)</div>\${validation.phantomFiles.map(f => '<div style="padding: 2px 0; color: var(--vscode-descriptionForeground);"><span style="color: var(--vscode-editorError-foreground)">\u2716</span> <span style="text-decoration: line-through">' + esc(f) + '</span></div>').join('')}\` : ''}
-            \${validation.missingFiles.length ? \`<div class="validation-subtitle">Missing from review</div>\${buildGroupTree(validation.missingFiles, 'missing')}\` : ''}
-          </div>\` : ''}
-        </div>\` : ''}
+        <div class="section-header" data-action="toggle-section" data-section="groups">
+          <span class="codicon \${groupsCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}" style="font-size: 12px;"></span>
+          <span class="codicon codicon-diff-multiple section-icon"></span>
+          <span>Groups</span>
+        </div>
 
-        <div class="section-header" data-action="toggle-section" data-section="groups"><span class="tree-chevron">\${groupsCollapsed ? '\u25B8' : '\u25BE'}</span>\${review.groups.length} Review Group\${review.groups.length !== 1 ? 's' : ''}</div>
-
-        \${!groupsCollapsed ? review.groups.map((g, i) => \`
-          <div class="group" id="group-\${i}">
-            <div class="group-header" data-action="open-group" data-group-index="\${i}">
-              <div class="group-title"><span class="tree-group-badge">\${i + 1}</span><span class="group-title-text">\${esc(g.title)}</span></div>
-              \${g.summary ? \`<div class="group-summary">\${inlineCode(g.summary)}</div>\` : ''}
+        \${!groupsCollapsed ? review.groups.map((g, i) => {
+          const groupHasPhantom = g.files.some(f => _phantomSet.has(f));
+          return \`
+            <div class="group" id="group-\${i}">
+              <div class="group-header" data-action="toggle-group-files" data-group-index="\${i}">
+                <div class="group-title">
+                  <span class="tree-group-badge">\${i + 1}</span>
+                  <span class="group-title-text">\${esc(g.title)}</span>
+                  \${groupHasPhantom ? '<span class="codicon codicon-warning phantom-badge"></span>' : ''}
+                </div>
+                \${g.summary ? \`<div class="group-summary">\${inlineCode(g.summary)}</div>\` : ''}
+              </div>
+              <div class="tree-stats-line" data-action="toggle-group-files" data-group-index="\${i}">
+                <span class="codicon codicon-file-code" style="font-size: 12px;"></span>
+                \${g.files.length} file\${g.files.length !== 1 ? 's' : ''}\${filePrefix(g.files) ? ' &mdash; ' + esc(filePrefix(g.files)) : ''}
+              </div>
+              \${expandedGroups.includes(i) ? buildGroupTree(g.files, i) : ''}
             </div>
-            <div class="group-meta" data-action="toggle-group-files" data-group-index="\${i}"><span class="file-count-toggle \${g.files.length < 5 ? 'fc-green' : g.files.length < 10 ? 'fc-yellow' : 'fc-red'}"><span class="tree-chevron">\${expandedGroups.includes(i) ? '\u25BE' : '\u25B8'}</span>\${g.files.length} file\${g.files.length !== 1 ? 's' : ''}</span></div>
-            \${expandedGroups.includes(i) ? buildGroupTree(g.files, i) : ''}
+          \`;
+        }).join('') : ''}
+
+        \${!groupsCollapsed && missingFiles.length > 0 ? \`
+          <div class="group uncategorized-group" id="group-uncategorized">
+            <div class="group-header" data-action="toggle-group-files" data-group-index="\${uncatIndex}">
+              <div class="group-title">
+                <span class="codicon codicon-question section-icon" style="font-size: 14px;"></span>
+                <span class="group-title-text">Uncategorized</span>
+              </div>
+              <div class="group-summary">Files in the diff not assigned to any group</div>
+            </div>
+            <div class="tree-stats-line" data-action="toggle-group-files" data-group-index="\${uncatIndex}">
+              <span class="codicon codicon-file-code" style="font-size: 12px;"></span>
+              \${missingFiles.length} file\${missingFiles.length !== 1 ? 's' : ''}\${filePrefix(missingFiles) ? ' &mdash; ' + esc(filePrefix(missingFiles)) : ''}
+            </div>
+            \${expandedGroups.includes(uncatIndex) ? buildGroupTree(missingFiles, 'uncategorized') : ''}
           </div>
-        \`).join('') : ''}
+        \` : ''}
 
         \${review.flags?.length ? \`
-          <div class="section-header" data-action="toggle-section" data-section="flags"><span class="tree-chevron">\${flagsCollapsed ? '\u25B8' : '\u25BE'}</span>Flags</div>
+          <div class="section-header" data-action="toggle-section" data-section="flags">
+            <span class="codicon \${flagsCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}" style="font-size: 12px;"></span>
+            <span class="codicon codicon-unverified section-icon"></span>
+            <span>Flags</span>
+          </div>
           \${!flagsCollapsed ? \`<div class="flags">
             \${review.flags.map((f, i) => \`
-              <div class="flag flag-\${esc(f.severity)}" id="flag-\${i}" data-action="open-flag" data-file="\${esc(f.file)}" data-line="\${f.line}" data-index="\${i}" data-clip="\${esc(f.summary ? f.title + ' | ' + f.summary : f.title)}">
+              <div class="flag flag-\${esc(f.severity)}" id="flag-\${i}" data-action="open-flag" data-file="\${esc(f.file)}" data-line="\${f.line}" data-index="\${i}" data-clip="\${esc(f.summary ? f.file + ' : ' + f.summary : f.file)}">
                 <span class="flag-icon">\${f.severity === 'error' ? '\u2716' : f.severity === 'warning' ? '\u26A0' : '\u24D8'}</span>
                 <div class="flag-content">
                   <div class="flag-title">\${esc(f.title)}</div>
@@ -419,10 +475,7 @@ export function getSidebarHtml(nonce: string): string {
       if (!target) return;
       const action = target.dataset.action;
 
-      if (action === 'open-group') {
-        const index = parseInt(target.dataset.groupIndex, 10);
-        vscode.postMessage({ type: 'openGroup', groupIndex: index });
-      } else if (action === 'open-flag') {
+      if (action === 'open-flag') {
         const file = target.dataset.file;
         const line = parseInt(target.dataset.line, 10);
         const index = parseInt(target.dataset.index, 10);
@@ -476,11 +529,25 @@ export function getSidebarHtml(nonce: string): string {
     function showEmpty() {
       document.getElementById('root').innerHTML = \`
         <div class="empty">
-          <p>No review loaded</p>
-          <p style="font-size: 12px;">Select a review JSON file to get started.</p>
+          <div class="empty-icon"><span class="codicon codicon-diff-multiple"></span></div>
+          <p class="empty-title">No review loaded</p>
+          <p class="empty-desc">Open a review file to get started.</p>
+          <p class="empty-desc" style="margin-top: 4px; font-size: 11px; opacity: 0.7;">Usually named <code>code-review.json</code></p>
           <button class="select-btn" data-action="select-file">Select Review File</button>
         </div>
       \`;
+    }
+
+    function filePrefix(files) {
+      if (files.length === 0) return '';
+      const parts = files.map(f => f.split('/'));
+      let commonLen = 0;
+      for (let i = 0; i < parts[0].length - 1; i++) {
+        if (parts.every(p => i < p.length - 1 && p[i] === parts[0][i])) {
+          commonLen = i + 1;
+        } else break;
+      }
+      return commonLen > 0 ? parts[0].slice(0, commonLen).join('/') + '/' : '';
     }
 
     function buildGroupTree(files, groupIndex) {
@@ -555,7 +622,6 @@ export function getSidebarHtml(nonce: string): string {
       }
 
       let html = '<div class="group-file-tree">';
-      if (prefix) html += '<div class="tree-prefix-line">' + esc(prefix) + '</div>';
       html += renderNode(tree, 0, '');
       html += '</div>';
       return html;
